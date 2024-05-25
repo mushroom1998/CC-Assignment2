@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Upload Video and Watermark</title>
+</head>
+<body>
+<h1>Upload Video and Watermark</h1>
+<form id="uploadForm" enctype="multipart/form-data">
+    <label for="video">Video:</label>
+    <input type="file" id="video" name="video"><br><br>
+    <label for="watermark">Watermark:</label>
+    <input type="file" id="watermark" name="watermark"><br><br>
+    <button type="submit">Upload</button>
+</form>
+<script>
+    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const formData = new FormData(this);
+        const response = await fetch('/upload', {
+            method: 'POST',
+            body: formData
+        });
+        const result = await response.json();
+        alert(result.message);
+    });
+</script>
+</body>
+</html>
