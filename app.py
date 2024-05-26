@@ -1,5 +1,4 @@
 import cv2
-import os
 from PIL import Image
 import os
 from flask import Flask, request, jsonify, send_from_directory
@@ -69,11 +68,21 @@ def index():
 
 @app.route('/upload', methods=['POST'])
 def videoProcess():
-    if 'video' not in request.files or 'watermark' not in request.files:
+    if 'videoFile' not in request.files or 'watermarkFile' not in request.files:
         return jsonify({'error': 'Lost file'}), 400
 
-    video = request.files['video']
-    image = request.files['watermark']
+    if 'videoURL' not in request.form or 'watermarkURL' not in request.form:
+        return jsonify({'error': 'Lost file'}), 400
+
+    print(request.files)
+    print(request.form)
+    if request.files['videoFile'] != '':
+        video = request.files['videoFile']
+        image = request.files['watermarkFile']
+    else:
+        video = request.form['videoURL']
+        image = request.form['watermarkURL']
+
     video_path = f"/tmp/{video.filename}"
     image_path = f"/tmp/{image.filename}"
     output_path = f"/tmp/watermarked_{video.filename}"
