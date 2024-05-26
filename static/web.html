@@ -6,10 +6,15 @@
 <body>
 <h1>Upload Video and Watermark</h1>
 <form id="uploadForm" enctype="multipart/form-data">
-    <label for="video">Video:</label>
-    <input type="file" id="video" name="video"><br><br>
-    <label for="watermark">Watermark:</label>
-    <input type="file" id="watermark" name="watermark"><br><br>
+    <label for="videoFile">Video:</label>
+    <input type="file" id="videoFile" name="videoFile"><br><br>
+    <label for="watermarkFile">Watermark:</label>
+    <input type="file" id="watermarkFile" name="watermarkFile"><br><br>
+
+    <label for="videoURL">Video:</label>
+    <input type="url" id="videoURL" name="videoURL"><br><br>
+    <label for="watermarkURL">Watermark:</label>
+    <input type="url" id="watermarkURL" name="watermarkURL"><br><br>
     <button type="submit">Upload</button>
 </form>
 <script>

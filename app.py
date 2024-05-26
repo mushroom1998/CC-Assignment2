@@ -1,4 +1,5 @@
 import cv2
+import os
 from PIL import Image
 import os
 from flask import Flask, request, jsonify, send_from_directory
@@ -6,7 +7,6 @@ from google.cloud import storage
 import subprocess
 
 app = Flask(__name__)
-
 
 def decomposeFrame(video_path):
     vidcap = cv2.VideoCapture(video_path)
