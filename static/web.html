@@ -2,32 +2,101 @@
 <html>
 <head>
     <title>Upload Video and Watermark</title>
+    <script>
+        function uploadFile(event) {
+            event.preventDefault();
+            if (document.getElementById("videoFile").value === ""){
+                alert("No video input!");
+            } else if (document.getElementById("watermarkFile").value === "") {
+                alert("No watermark input!");
+            } else {
+                const formData = new FormData(document.getElementById('uploadForm'));
+                fetch('/upload1', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(result => {
+                    alert(result.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }
+        }
+
+        function uploadURL(event) {
+            event.preventDefault();
+            if (document.getElementById("videoURL").value === ""){
+                alert("No video input!");
+            } else if (document.getElementById("watermarkURL").value === "") {
+                alert("No watermark input!");
+            } else {
+                const formData = new FormData(document.getElementById('uploadForm'));
+                fetch('/upload2', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(result => {
+                    alert(result.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }
+        }
+
+        function getStatus(event) {
+            event.preventDefault();
+            if (document.getElementById("token").value === ""){
+                alert("No token input!");
+            } else {
+                const formData = new FormData(document.getElementById('uploadForm'));
+                fetch('/token', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => response.json())
+                .then(result => {
+                    alert(result.message);
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                });
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', function() {
+            document.getElementById('fileButton').addEventListener('click', uploadFile);
+            document.getElementById('URLButton').addEventListener('click', uploadURL);
+            document.getElementById('tokenButton').addEventListener('click', getStatus);
+        });
+    </script>
 </head>
 <body>
 <h1>Upload Video and Watermark</h1>
 <form id="uploadForm" enctype="multipart/form-data">
+    <h2>Upload video and watermark files directly</h2>
     <label for="videoFile">Video:</label>
     <input type="file" id="videoFile" name="videoFile"><br><br>
     <label for="watermarkFile">Watermark:</label>
     <input type="file" id="watermarkFile" name="watermarkFile"><br><br>
+    <button type="button" id="fileButton">Upload</button>
 
+    <h2>Upload video and watermark URLs</h2>
+    <h4>Please provide the URLs in the form of: https://storage.cloud.google.com/<i>BUCKET_NAME/OBJECT_NAME</i></h4>
     <label for="videoURL">Video:</label>
     <input type="url" id="videoURL" name="videoURL"><br><br>
     <label for="watermarkURL">Watermark:</label>
     <input type="url" id="watermarkURL" name="watermarkURL"><br><br>
-    <button type="submit">Upload</button>
+    <button type="button" id="URLButton">Upload</button>
+    <br>
+    <h1>Obtain the status of the job</h1>
+    <label for="token">Job token:</label>
+    <input type="text" id="token" name="token">
+    <button type="button" id="tokenButton">Submit</button>
 </form>
-<script>
-    document.getElementById('uploadForm').addEventListener('submit', async function(e) {
-        e.preventDefault();
-        const formData = new FormData(this);
-        const response = await fetch('/upload', {
-            method: 'POST',
-            body: formData
-        });
-        const result = await response.json();
-        alert(result.message);
-    });
-</script>
 </body>
 </html>
+
