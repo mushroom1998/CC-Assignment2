@@ -1,14 +1,16 @@
 import cv2
-import os
 from PIL import Image
-import os
 from flask import Flask, request, jsonify, send_from_directory
 from google.cloud import storage
-import subprocess
+import os
+import re
 
 app = Flask(__name__)
 
+bucket_name = 'thinking-banner-421414_cloudbuild'
+
 def decomposeFrame(video_path):
+    '''decompose the original video to frames'''
     vidcap = cv2.VideoCapture(video_path)
     fps = vidcap.get(cv2.CAP_PROP_FPS)
     if not os.path.isdir('/tmp/frames'):
@@ -27,17 +29,18 @@ def decomposeFrame(video_path):
     return fps
 
 
-def addWatermark(logo):
-    for img_name in os.listdir('/tmp/frames'):
-        img = Image.open('/tmp/frames/' + img_name)
-        width, height = img.size
-        transparent = Image.new('RGBA', (width, height), (0,0,0,0))
-        transparent.paste(img, (0,0))
-        transparent.paste(logo, (0,0), mask=logo)
-        transparent.convert('RGB').save('/tmp/frames/' + img_name)
+def addWatermark(logo, img_name):
+    '''add watermark to every frames'''
+    img = Image.open('/tmp/frames/' + img_name)
+    width, height = img.size
+    transparent = Image.new('RGBA', (width, height), (0,0,0,0))
+    transparent.paste(img, (0,0))
+    transparent.paste(logo, (0,0), mask=logo)
+    transparent.convert('RGB').save('/tmp/frames/' + img_name)
 
 
 def createVideo(output_path, fps):
+    '''combine all watermarked frames to a new video'''
     image_folder = '/tmp/frames'
     images = [img for img in os.listdir(image_folder)]
     frame = cv2.imread(os.path.join(image_folder, images[0]))
@@ -53,12 +56,40 @@ def createVideo(output_path, fps):
     video.release()
 
 
-def storeWatermarkedFile(file_path, bucket_name, destination_blob_name):
-    client = storage.Client()
-    bucket = client.bucket(bucket_name)
+def download_blob(url):
+    '''save the file in url at /tmp/file and return filename'''
+    filename = url.split('/')[-1]
+    command = ('curl -X GET -H "Authorization: Bearer $(gcloud auth print-access-token)" -o "/tmp/' + filename
+               + '" "' + url + '"')
+    os.system(command)
+    return filename
+
+
+def upload_blob(bucket_name, source_file_name, destination_blob_name):
+    '''upload file to bucket'''
+    storage_client = storage.Client()
+    bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
-    blob.upload_from_filename(file_path)
-    return blob.public_url
+    generation_match_precondition = 0
+    blob.upload_from_filename(source_file_name, if_generation_match=generation_match_precondition)
+    # public_url = "https://console.cloud.google.com/storage/browser/_details/" + bucket_name + "/" + destination_blob_name
+
+
+def process_video(image_path, video_path, output_path, video_name):
+    '''function to perform video processing procedure'''
+    logo = Image.open(image_path)
+    fps = decomposeFrame(video_path)
+    size = (500, 100)
+    logo.thumbnail(size)
+    for img_name in os.listdir('/tmp/frames'):
+        addWatermark(logo, img_name)
+    createVideo(output_path, fps)
+
+    upload_blob(bucket_name, output_path, video_name)
+    os.system('rm -rf /tmp/frames')
+    os.system('rm -f ' + video_path)
+    os.system('rm -f ' + output_path)
+    os.system('rm -f ' + image_path)
 
 
 @app.route('/')
@@ -66,55 +97,66 @@ def index():
     return send_from_directory('static', 'web.html')
 
 
-@app.route('/upload', methods=['POST'])
+@app.route('/upload1', methods=['POST'])
 def videoProcess():
-    if 'videoFile' not in request.files or 'watermarkFile' not in request.files:
-        return jsonify({'error': 'Lost file'}), 400
+    video = request.files['videoFile']
+    image = request.files['watermarkFile']
 
-    if 'videoURL' not in request.form or 'watermarkURL' not in request.form:
-        return jsonify({'error': 'Lost file'}), 400
-
-    print(request.files)
-    print(request.form)
-    if request.files['videoFile'] != '':
-        video = request.files['videoFile']
-        image = request.files['watermarkFile']
-    else:
-        video = request.form['videoURL']
-        image = request.form['watermarkURL']
-
-    video_path = f"/tmp/{video.filename}"
-    image_path = f"/tmp/{image.filename}"
-    output_path = f"/tmp/watermarked_{video.filename}"
+    video_name = video.filename
+    video_path = "/tmp/" + video_name
+    image_path = "/tmp/" + image.filename
+    output_path = "/tmp/watermarked_" + video_name
 
     video.save(video_path)
     image.save(image_path)
 
     try:
-        logo = Image.open(image_path)
-        fps = decomposeFrame(video_path)
-        size = (500, 100)
-        logo.thumbnail(size)
-        addWatermark(logo)
-        createVideo(output_path, fps)
-
-        # bucket_name = 'your-bucket-name'
-        # destination_blob_name = f"processed/{os.path.basename(output_path)}"
-        # public_url = storeWatermarkedFile(output_path, bucket_name, destination_blob_name)
-        # subprocess.run(['rm', '-rf', '/tmp/frames'], check=True)
-        # subprocess.run(['rm', '-f', video_path], check=True)
-        # subprocess.run(['rm', '-f', output_path], check=True)
-        # subprocess.run(['rm', '-f', image_path], check=True)
-
+        process_video(image_path, video_path, output_path, video_name)
 
         return jsonify({
-            # "url": public_url,
-            "message": "Video processed and uploaded successfully"
+            "message": "Job token: "
         })
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+
+@app.route('/upload2', methods=['POST'])
+def urlProcess():
+    video_url = request.form['videoURL']
+    image_url = request.form['watermarkURL']
+
+    if not (re.match(r'https://storage\.cloud\.google\.com/.*/.*', video) and
+            re.match(r'https://storage\.cloud\.google\.com/.*/.*', image)):
+        return jsonify({"message": "Wrong URL input. Please check your URL form."}), 500
+
+    video_name = download_blob(video_url)
+    image_name = download_blob(image_url)
+    video_path = "/tmp/" + video_name
+    image_path = "/tmp/" + image_name
+    output_path = "/tmp/watermarked_" + video_name
+
+    try:
+        process_video(image_path, video_path, output_path, video_name)
+
+        return jsonify({
+            "message": ""
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/token', methods=['POST'])
+def tokenProcess():
+    try:
+
+        return jsonify({
+            "message": ""
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == "__main__":
