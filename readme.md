@@ -9,8 +9,10 @@
 static: 前端页面代码\
 fatfat.mp4：测试视频\
 Logo.png：测试水印\
-watermark.py：从前端接收文件，处理视频，并保存在/tmp
-
+decompose.py, process.py, combine.py: 后端代码，通过Pub/Sub messaging通信\
+decompose.py: 读取前端输入并处理，视频分帧
+process.py: 给每一帧加水印
+combine.py: 合并加水印后的帧并上传google cloud storage
 
 k8s部署命令：\
 创建仓库\
