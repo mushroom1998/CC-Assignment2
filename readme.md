@@ -4,7 +4,6 @@
 3.输入一个任务的identifier，可以返回任务的状态\
 ...
 
-
 文件说明：\
 static: 前端页面代码\
 fatfat.mp4：测试视频\
@@ -13,6 +12,15 @@ decompose.py, process.py, combine.py: 后端代码，通过Pub/Sub messaging通�
 decompose.py: 读取前端输入并处理，视频分帧
 process.py: 给每一帧加水印
 combine.py: 合并加水印后的帧并上传google cloud storage
+
+SQL结构：(NoSQL)
+"id": "unique-task-id",\
+"video_path": "/tmp/video.mp4",\
+"image_path": "/tmp/image.png",\
+"output_path": "/tmp/watermarked_video.mp4",\
+"status": "decomposing/processing 50%/merging/finish",\
+"download_url": "NULL/cloud-storage-url",\
+"update_time": "last-updated-timestamp"
 
 k8s部署命令：\
 创建仓库\

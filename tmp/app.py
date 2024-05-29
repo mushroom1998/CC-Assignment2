@@ -4,6 +4,7 @@ from flask import Flask, request, jsonify, send_from_directory
 from google.cloud import storage
 import os
 import re
+import logging
 
 app = Flask(__name__)
 
@@ -101,6 +102,7 @@ def index():
 def videoProcess():
     video = request.files['videoFile']
     image = request.files['watermarkFile']
+    logging.warning("89")
 
     video_name = video.filename
     video_path = "/tmp/" + video_name
