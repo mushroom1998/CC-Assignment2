@@ -1,4 +1,3 @@
-import logging
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import os
@@ -6,6 +5,8 @@ import re
 import uuid
 import json
 from google.cloud import pubsub_v1
+from google.cloud import datastore
+import time
 
 app = Flask(__name__)
 os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
@@ -19,10 +20,34 @@ decompose_topic_path = publisher.topic_path(project_id, decompose_topic_id)
 
 
 def checkTopicSub():
+    '''create the first Pub/Sub topic if not exist'''
     try:
         publisher.get_topic(topic=decompose_topic_path)
     except:
         publisher.create_topic(name=decompose_topic_path)
+
+
+def create_table(video_name, video_path, image_path, output_path):
+    '''create NoSQL table to store task status'''
+    datastore_client = datastore.Client()
+    task_key = datastore_client.key("Status", task_id)
+    task = datastore.Entity(key=task_key)
+
+    task["video_name"] = video_name
+    task["video_path"] = video_path
+    task["image_path"] = image_path
+    task["output_path"] = output_path
+    task["status"] = "Decomposing"
+    task["update_time"] = time.ctime()
+
+    datastore_client.put(task)
+
+
+def getProgress(task_id):
+    datastore_client = datastore.Client()
+    task_key = datastore_client.key("Status", task_id)
+    task = datastore.Entity(key=task_key)
+    return task['status']
 
 
 def decomposeFrame(video_path):
@@ -54,15 +79,10 @@ def download_blob(url):
     return filename
 
 
-def call(image_path, video_path, output_path, video_name, fps):
-    fps = decomposeFrame(video_path)
+def call(task_id, fps):
     message = {
-        'fps': fps,
-        'video_name': video_name,
-        'video_path': video_path,
-        'image_path': image_path,
-        'output_path': output_path,
-        'status': 'pending'
+        'task_id': task_id,
+        'fps': fps
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
 
@@ -85,11 +105,11 @@ def videoProcess():
     video.save(video_path)
     image.save(image_path)
 
+    create_table(video_name, video_path, image_path, output_path)
     fps = decomposeFrame(video_path)
-    logging.warning(task_id)
-    call(image_path, video_path, output_path, video_name, fps)
+    call(task_id, fps)
 
-    return jsonify({"message": "task_id is " + task_id})
+    return jsonify({"message": "Task_id: " + task_id})
 
 
 @app.route('/upload2', methods=['POST'])
@@ -107,18 +127,20 @@ def urlProcess():
     image_path = "/tmp/" + image_name
     output_path = "/tmp/watermarked_" + video_name
 
+    create_table(video_name, video_path, image_path, output_path)
     fps = decomposeFrame(video_path)
-    call(image_path, video_path, output_path, video_name, fps)
+    call(task_id, fps)
 
     return jsonify({"message": "task_id is " + task_id})
 
 
-@app.route('/token', methods=['POST'])
+@app.route('/tokenProcess', methods=['POST'])
 def tokenProcess():
     try:
-
+        input_task_id = request.args.get('taskID')
+        progress = getProgress(input_task_id)
         return jsonify({
-            "message": ""
+            "message": progress
         })
 
     except Exception as e:

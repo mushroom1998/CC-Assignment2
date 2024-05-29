@@ -49,21 +49,17 @@
 
         function getStatus(event) {
             event.preventDefault();
-            if (document.getElementById("token").value === ""){
-                alert("No token input!");
+            if (document.getElementById("taskID").value === ""){
+                alert("No task ID input!");
             } else {
-                const formData = new FormData(document.getElementById('uploadForm'));
-                fetch('/token', {
-                    method: 'POST',
-                    body: formData
-                })
-                .then(response => response.json())
-                .then(result => {
-                    alert(result.message);
-                })
-                .catch(error => {
-                    console.error('Error:', error);
-                });
+                const taskID = document.getElementById('taskID').value;
+                try {
+                    const response = await fetch(`/tokenProcess?taskID=${taskID}`);
+                    const data = await response.json();
+                    document.getElementById('taskStatus').textContent = data.message;
+                } catch (error) {
+                    document.getElementById('taskStatus').textContent = `${error.message}`;
+                }
             }
         }
 
@@ -93,10 +89,11 @@
     <button type="button" id="URLButton">Upload</button>
     <br>
     <h1>Obtain the status of the job</h1>
-    <label for="token">Job token:</label>
-    <input type="text" id="token" name="token">
+    <label for="taskID">Task id:</label>
+    <input type="text" id="taskID" name="taskID">
     <button type="button" id="tokenButton">Submit</button>
 </form>
+<p id="taskStatus">Task status</p>
 </body>
 </html>
 

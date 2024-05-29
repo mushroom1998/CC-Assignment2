@@ -1,8 +1,9 @@
-import logging
 from PIL import Image
 from google.cloud import pubsub_v1
 import os
 import json
+from google.cloud import datastore
+import time
 
 project_id = "thinking-banner-421414"
 
@@ -18,6 +19,7 @@ decompose_topic_path = publisher.topic_path(project_id, decompose_topic_id)
 
 
 def checkTopicSub():
+    '''create the second Pub/Sub topic and the first subscription if not exist'''
     try:
         publisher.get_topic(topic=process_topic_path)
     except:
@@ -28,18 +30,32 @@ def checkTopicSub():
         subscriber.create_subscription(name=decompose_subscription_path, topic=decompose_topic_path)
 
 
+def getImagePath(task_id):
+    datastore_client = datastore.Client()
+    task_key = datastore_client.key("Status", task_id)
+    task = datastore.Entity(key=task_key)
+    return task['image_path']
+
+
+def update_table(progress, task_id):
+    datastore_client = datastore.Client()
+    task_key = datastore_client.key("Status", task_id)
+    task = datastore.Entity(key=task_key)
+    task['status'] = progress
+    task["update_time"] = time.ctime()
+
+
 def addWatermark(message):
     '''add watermark to every frames'''
     data = json.loads(message.data)
+    task_id = data['task_id']
     fps = data['fps']
-    video_name = data['video_name']
-    video_path = data['video_path']
-    image_path = data['image_path']
-    output_path = data['output_path']
+    image_path = getImagePath(task_id)
 
     logo = Image.open(image_path)
     size = (500, 100)
     logo.thumbnail(size)
+    i = 0
     for img_name in os.listdir('/tmp/frames'):
         img = Image.open('/tmp/frames/' + img_name)
         width, height = img.size
@@ -47,14 +63,13 @@ def addWatermark(message):
         transparent.paste(img, (0,0))
         transparent.paste(logo, (0,0), mask=logo)
         transparent.convert('RGB').save('/tmp/frames/' + img_name)
+        i += 1
+        progress = "processing {:.2f}%".format(100*i/len(os.listdir('/tmp/frames')))
+        update_table(progress, task_id)
 
     process_message = {
-        'fps': fps,
-        'video_name': video_name,
-        'video_path': video_path,
-        'image_path': image_path,
-        'output_path': output_path,
-        'status': 'pending'
+        'task_id': task_id,
+        'fps': fps
     }
     publisher.publish(process_topic_path, json.dumps(process_message).encode('utf-8'))
     subscriber.delete_subscription(subscription=decompose_subscription_path)

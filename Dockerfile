@@ -12,5 +12,6 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 WORKDIR $APP_HOME
 COPY . ./
-RUN pip install Flask gunicorn opencv-python Pillow google-cloud-storage
+RUN pip install Flask gunicorn opencv-python Pillow google-cloud-storage google-cloud-datastore
+RUN pip3 install google-cloud-pubsub
 CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 app:app

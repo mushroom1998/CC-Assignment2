@@ -20,7 +20,7 @@ SQL结构：(NoSQL)
 "output_path": "/tmp/watermarked_video.mp4",\
 "status": "decomposing/processing 50%/merging/finish",\
 "download_url": "NULL/cloud-storage-url",\
-"update_time": "last-updated-timestamp"
+"update_time": "last-updated-time"
 
 k8s部署命令：\
 创建仓库\
