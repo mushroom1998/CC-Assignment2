@@ -47,26 +47,9 @@
             }
         }
 
-        function getStatus(event) {
-            event.preventDefault();
-            if (document.getElementById("taskID").value === ""){
-                alert("No task ID input!");
-            } else {
-                const taskID = document.getElementById('taskID').value;
-                try {
-                    const response = await fetch(`/tokenProcess?taskID=${taskID}`);
-                    const data = await response.json();
-                    document.getElementById('taskStatus').textContent = data.message;
-                } catch (error) {
-                    document.getElementById('taskStatus').textContent = `${error.message}`;
-                }
-            }
-        }
-
         document.addEventListener('DOMContentLoaded', function() {
             document.getElementById('fileButton').addEventListener('click', uploadFile);
             document.getElementById('URLButton').addEventListener('click', uploadURL);
-            document.getElementById('tokenButton').addEventListener('click', getStatus);
         });
     </script>
 </head>
@@ -81,19 +64,34 @@
     <button type="button" id="fileButton">Upload</button>
 
     <h2>Upload video and watermark URLs</h2>
-    <h4>Please provide the URLs in the form of: https://storage.cloud.google.com/<i>BUCKET_NAME/OBJECT_NAME</i></h4>
     <label for="videoURL">Video:</label>
     <input type="url" id="videoURL" name="videoURL"><br><br>
     <label for="watermarkURL">Watermark:</label>
     <input type="url" id="watermarkURL" name="watermarkURL"><br><br>
     <button type="button" id="URLButton">Upload</button>
     <br>
+</form>
+<form id="progressForm">
     <h1>Obtain the status of the job</h1>
     <label for="taskID">Task id:</label>
-    <input type="text" id="taskID" name="taskID">
-    <button type="button" id="tokenButton">Submit</button>
+    <input type="text" id="taskID" name="taskID" required>
+    <button type="submit">Submit</button>
 </form>
 <p id="taskStatus">Task status</p>
+
+<script>
+    document.getElementById('progressForm').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        const taskID = document.getElementById('taskID').value;
+        try {
+            const response = await fetch(`/tokenProcess?taskID=${taskID}`);
+            const data = await response.json();
+            document.getElementById('taskStatus').textContent = `${data.message}`;
+        } catch (error) {
+            document.getElementById('taskStatus').textContent = `${error.message}`;
+        }
+    });
+</script>
 </body>
 </html>
 
