@@ -1,6 +1,4 @@
 import logging
-
-import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import os
 import uuid
@@ -16,14 +14,20 @@ task_id = str(uuid.uuid4())
 
 project_id = "thinking-banner-421414"
 decompose_topic_id = "decompose-video"
-decompose_subscription_id = "decompose-video-sub"
+decompose_subscription_id_0 = "decompose-video-sub-0"
+decompose_subscription_id_1 = "decompose-video-sub-1"
+decompose_subscription_id_2 = "decompose-video-sub-2"
+decompose_subscription_id_3 = "decompose-video-sub-3"
 process_topic_id = "process-video"
 process_subscription_id = "process-video-sub"
 
 publisher = pubsub_v1.PublisherClient()
 subscriber = pubsub_v1.SubscriberClient()
 decompose_topic_path = publisher.topic_path(project_id, decompose_topic_id)
-decompose_subscription_path = subscriber.subscription_path(project_id, decompose_subscription_id)
+decompose_subscription_path_0 = subscriber.subscription_path(project_id, decompose_subscription_id_0)
+decompose_subscription_path_1 = subscriber.subscription_path(project_id, decompose_subscription_id_1)
+decompose_subscription_path_2 = subscriber.subscription_path(project_id, decompose_subscription_id_2)
+decompose_subscription_path_3 = subscriber.subscription_path(project_id, decompose_subscription_id_3)
 process_topic_path = publisher.topic_path(project_id, process_topic_id)
 process_subscription_path = subscriber.subscription_path(project_id, process_subscription_id)
 
@@ -38,7 +42,7 @@ def clear_subscription(subscription_path):
         future.result(timeout=10)
     except Exception as e:
         future.cancel()
-        print(f"Subscription cleared: {e}")
+        print(f"Subscription cleared: {subscription_path}")
 
 
 def checkSubPub():
@@ -126,9 +130,7 @@ def urlProcess():
         'video_url': video_url,
         'image_url': image_url
     }
-    future = publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
-    message_id = future.result()
-    logging.warning(f"Published message ID: {message_id}")
+    publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
     return jsonify({"message": "task_id is " + task_id})
 
@@ -144,7 +146,10 @@ def tokenProcess():
 
 
 if __name__ == "__main__":
-    clear_subscription(decompose_subscription_path)
+    clear_subscription(decompose_subscription_path_0)
+    clear_subscription(decompose_subscription_path_1)
+    clear_subscription(decompose_subscription_path_2)
+    clear_subscription(decompose_subscription_path_3)
     clear_subscription(process_subscription_path)
     checkSubPub()
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

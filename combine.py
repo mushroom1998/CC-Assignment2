@@ -1,5 +1,4 @@
 from google.cloud import pubsub_v1
-import os
 import json
 import cv2
 from google.cloud import storage
@@ -7,6 +6,7 @@ from google.cloud import datastore
 import time
 
 bucket_name = 'thinking-banner-421414_cloudbuild'
+message_count = 0
 
 project_id = "thinking-banner-421414"
 process_subscription_id = "process-video-sub"
@@ -37,39 +37,43 @@ def update_table(progress, task_id):
 
 def combineVideo(message):
     '''combine all watermarked videos to a new video'''
-    data = json.loads(message.data)
-    task_id = data['task_id']
-    download_blob("https://storage.googleapis.com/" + bucket_name + "/video0.mp4")
-    download_blob("https://storage.googleapis.com/" + bucket_name + "/video1.mp4")
-    download_blob("https://storage.googleapis.com/" + bucket_name + "/video2.mp4")
-    download_blob("https://storage.googleapis.com/" + bucket_name + "/video3.mp4")
-    video_files = ['video0.mp4', 'video1.mp4', 'video2.mp4', 'video3.mp4']
-
-    cap = cv2.VideoCapture(video_files[0])
-    fps = int(cap.get(cv2.CAP_PROP_FPS))
-    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    cap.release()
-    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    out = cv2.VideoWriter(task_id+".mp4", fourcc, fps, (width, height))
-
-    for video_file in video_files:
-        cap = cv2.VideoCapture(video_file)
-        while True:
-            ret, frame = cap.read()
-            if not ret:
-                break
-            out.write(frame)
-        cap.release()
-    out.release()
-
-    download_url = upload_blob(task_id+".mp4", task_id)
-    status = "Task finish! Download URL: " + download_url + ('\n. You can download by running command: '
-                                                             'curl -X GET -H "Authorization: Bearer '
-                                                             '$(gcloud auth print-access-token)" -o '
-                                                             '"LOCAL_FILENAME" "DOWNLOAD_URL"')
-    update_table(status, task_id)
     message.ack()
+    global message_count
+    message_count += 1
+    if message_count == 4:
+        message_count = 0
+        data = json.loads(message.data)
+        task_id = data['task_id']
+        download_blob("https://storage.googleapis.com/" + bucket_name + "/video0.mp4")
+        download_blob("https://storage.googleapis.com/" + bucket_name + "/video1.mp4")
+        download_blob("https://storage.googleapis.com/" + bucket_name + "/video2.mp4")
+        download_blob("https://storage.googleapis.com/" + bucket_name + "/video3.mp4")
+        video_files = ['video0.mp4', 'video1.mp4', 'video2.mp4', 'video3.mp4']
+
+        cap = cv2.VideoCapture(video_files[0])
+        fps = int(cap.get(cv2.CAP_PROP_FPS))
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        cap.release()
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        out = cv2.VideoWriter(task_id+".mp4", fourcc, fps, (width, height))
+
+        for video_file in video_files:
+            cap = cv2.VideoCapture(video_file)
+            while True:
+                ret, frame = cap.read()
+                if not ret:
+                    break
+                out.write(frame)
+            cap.release()
+        out.release()
+
+        download_url = upload_blob(task_id+".mp4", task_id)
+        status = "Task finish! Download URL: " + download_url + ('\n. You can download by running command: '
+                                                                 'curl -X GET -H "Authorization: Bearer '
+                                                                 '$(gcloud auth print-access-token)" -o '
+                                                                 '"LOCAL_FILENAME" "DOWNLOAD_URL"')
+        update_table(status, task_id)
 
 
 def upload_blob(source_file_name, destination_blob_name):

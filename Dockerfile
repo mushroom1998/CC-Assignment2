@@ -1,10 +1,7 @@
-#
-# Small server program for use with Cloud Computing 2024 Homework 2,
-# LIACS, Leiden University.
-#
-
+# For process.py
 FROM python:3.10-slim
 ENV APP_HOME /app
+ENV PYTHONUNBUFFERED=1
 RUN apt-get update && apt-get install -y \
     libgl1 \
     libgl1-mesa-glx \
@@ -12,6 +9,6 @@ RUN apt-get update && apt-get install -y \
     rm -rf /var/lib/apt/lists/*
 WORKDIR $APP_HOME
 COPY . ./
-RUN pip install Flask gunicorn opencv-python Pillow google-cloud-storage google-cloud-datastore
+RUN pip install google-cloud-storage google-cloud-datastore google-cloud-pubsub numpy opencv-python
 RUN pip3 install google-cloud-pubsub
-CMD exec gunicorn --bind :$PORT --workers 1 --threads 8 app:app
+CMD ["python", "process.py"]

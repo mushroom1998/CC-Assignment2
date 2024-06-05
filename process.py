@@ -4,14 +4,13 @@ import cv2
 import json
 import time
 import numpy as np
-import logging
 
 project_id = "thinking-banner-421414"
-job_id = int(os.environ.get("HOSTNAME").split("-")[-1])
+job_id = os.environ.get("HOSTNAME").split("-")[-1]
 bucket_name = 'thinking-banner-421414_cloudbuild'
 
 decompose_topic_id = "decompose-video"
-decompose_subscription_id = "decompose-video-sub"
+decompose_subscription_id = "decompose-video-sub-" + job_id
 process_topic_id = "process-video"
 process_subscription_id = "process-video-sub"
 
@@ -56,14 +55,13 @@ def update_table(task_id):
 def addWatermark(message):
     '''add watermark to videos'''
     data = json.loads(message.data)
-    print(data)
     task_id = data['task_id']
-    print(task_id)
+    print(job_id, task_id)
     video_url = data['video_url']
     image_url = data['image_url']
     video_name = download_blob(video_url)
     image_name = download_blob(image_url)
-    output_name = "video"+str(job_id)+".mp4"
+    output_name = "video"+job_id+".mp4"
 
     cap = cv2.VideoCapture(video_name)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -78,7 +76,7 @@ def addWatermark(message):
     logo_height, logo_width = logo.shape[:2]
 
 
-    start_frame = job_id * segment_frames
+    start_frame = int(job_id) * segment_frames
     end_frame = start_frame + segment_frames
     cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
     while cap.isOpened() and cap.get(cv2.CAP_PROP_POS_FRAMES) < end_frame:
