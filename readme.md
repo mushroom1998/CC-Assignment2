@@ -7,7 +7,7 @@ decompose.py: 读取前端输入，如果输入为文件则上传GCS，传给pro
 process.py: GKE上创建4个集群副本并行执行，下载视频和水印，处理对应视频片段，并把加好水印的视频片段上传GCS
 combine.py: 下载视频片段，合并后上传GCS
 
-SQL结构：(NoSQL)
+SQL结构：(NoSQL)\
 "id": "unique-task-id",\
 "status": "decomposing/processing 50%/merging/finish",\
 "update_time": "last-updated-time"
@@ -26,7 +26,6 @@ gcloud builds submit --tag us-central1-docker.pkg.dev/thinking-banner-421414/wat
 gcloud artifacts docker images delete us-central1-docker.pkg.dev/thinking-banner-421414/watermark-repo/process
 \
 创建集群\
-\
 gcloud container clusters create watermark-gke --zone=asia-east1-b --workload-pool=thinking-banner-421414.svc.id.goog --machine-type=e2-small --disk-type=pd-standard --disk-size=50GB
 \
 删除集群\
