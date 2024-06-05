@@ -27,7 +27,7 @@ def getInformation(task_id):
 
 
 def update_table(progress, task_id):
-    client = datastore.Client()
+    client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
     if task:
@@ -37,31 +37,34 @@ def update_table(progress, task_id):
 
 
 def combineVideo(message):
-    '''combine all watermarked frames to a new video'''
+    '''combine all watermarked videos to a new video'''
     data = json.loads(message.data)
     task_id = data['task_id']
-    fps = data['fps']
-    video_name, video_path, image_path, output_path = getInformation(task_id)
+    download_blob("https://storage.googleapis.com/" + bucket_name + "/video0.mp4")
+    download_blob("https://storage.googleapis.com/" + bucket_name + "/video1.mp4")
+    download_blob("https://storage.googleapis.com/" + bucket_name + "/video2.mp4")
+    download_blob("https://storage.googleapis.com/" + bucket_name + "/video3.mp4")
+    video_files = ['video0.mp4', 'video1.mp4', 'video2.mp4', 'video3.mp4']
 
-    update_table('merging', task_id)
-    image_folder = '/tmp/frames'
-    images = [img for img in os.listdir(image_folder)]
-    frame = cv2.imread(os.path.join(image_folder, images[0]))
-    height, width, layers = frame.shape
+    cap = cv2.VideoCapture(video_files[0])
+    fps = int(cap.get(cv2.CAP_PROP_FPS))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    cap.release()
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-    video = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
-    images.sort()
+    out = cv2.VideoWriter(task_id+".mp4", fourcc, fps, (width, height))
 
-    for image in images:
-        video.write(cv2.imread(os.path.join(image_folder, image)))
+    for video_file in video_files:
+        cap = cv2.VideoCapture(video_file)
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            out.write(frame)
+        cap.release()
+    out.release()
 
-    cv2.destroyAllWindows()
-    video.release()
-    download_url = upload_blob(output_path, 'watermarked_' + video_name)
-    os.system('rm -rf /tmp/frames')
-    os.system('rm -f ' + video_path)
-    os.system('rm -f ' + output_path)
-    os.system('rm -f ' + image_path)
+    download_url = upload_blob(task_id+".mp4", task_id)
     status = "Task finish! Download URL: " + download_url + ('\n. You can download by running command: '
                                                              'curl -X GET -H "Authorization: Bearer '
                                                              '$(gcloud auth print-access-token)" -o '
@@ -72,12 +75,24 @@ def combineVideo(message):
 
 def upload_blob(source_file_name, destination_blob_name):
     '''upload file to bucket'''
-    storage_client = storage.Client()
+    storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(destination_blob_name)
     blob.upload_from_filename(source_file_name)
     download_url = "https://storage.googleapis.com/" + bucket_name + "/" + destination_blob_name
     return download_url
+
+
+def download_blob(url):
+    '''save the file in url at /tmp/file and return filename'''
+    filename = url.split('/')[-1]
+    bucket_name = url.split('/')[-2]
+    storage_client = storage.Client(project='thinking-banner-421414')
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(filename)
+    destination_file_name = filename
+    blob.download_to_filename(destination_file_name)
+    return filename
 
 
 if __name__ == "__main__":

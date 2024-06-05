@@ -1,15 +1,16 @@
+import logging
+
 import cv2
 from flask import Flask, request, jsonify, send_from_directory
 import os
 import uuid
 import json
-from google.cloud import pubsub_v1
-from google.cloud import datastore
-from google.cloud import storage
+from google.cloud import pubsub_v1, datastore, storage
 import time
 
 app = Flask(__name__)
 os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
+bucket_name = 'thinking-banner-421414_cloudbuild'
 task_id = str(uuid.uuid4())
 
 project_id = "thinking-banner-421414"
@@ -46,54 +47,75 @@ def checkSubPub():
         subscriber.create_subscription(name=process_subscription_path, topic=process_topic_path)
 
 
-def create_table(video_name, video_path, image_path, output_path):
+def create_table():
     '''create NoSQL table to store task status'''
-    datastore_client = datastore.Client()
-    task_key = datastore_client.key("Status", task_id)
+    client = datastore.Client(project='thinking-banner-421414')
+    task_key = client.key("Status", task_id)
     task = datastore.Entity(key=task_key)
 
-    task["video_name"] = video_name
-    task["video_path"] = video_path
-    task["image_path"] = image_path
-    task["output_path"] = output_path
     task["status"] = "Decomposing"
     task["update_time"] = time.ctime()
 
-    datastore_client.put(task)
+    client.put(task)
 
 
 def getProgress(task_id):
-    client = datastore.Client()
+    client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
     return task['status']
 
 
-def decomposeFrame(video_path):
+def splitWorker(video_path):
     '''decompose the original video to frames'''
-    vidcap = cv2.VideoCapture(video_path)
-    fps = vidcap.get(cv2.CAP_PROP_FPS)
-    if not os.path.isdir('/tmp/frames'):
-        os.mkdir('/tmp/frames')
-    if vidcap.isOpened():
-        success, frame = vidcap.read()
-        count = 0
-        while success:
-            success, frame = vidcap.read()
-            if not success:
+    output_video_paths = ['video_1.mp4', 'video_2.mp4', 'video_3.mp4', 'video_4.mp4']
+    cap = cv2.VideoCapture(video_path)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    segment_frames = total_frames // 4
+    if not os.path.isdir('/tmp/videos'):
+        os.mkdir('/tmp/videos')
+    for i, output_video_path in enumerate(output_video_paths):
+        start_frame = i * segment_frames
+        end_frame = start_frame + segment_frames
+
+        # 设置视频的编解码器和帧大小
+        fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        out = cv2.VideoWriter(output_video_path, fourcc, fps, (width, height))
+
+        # 读取并写入视频帧
+        cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
+        while cap.isOpened() and cap.get(cv2.CAP_PROP_POS_FRAMES) < end_frame:
+            ret, frame = cap.read()
+            if ret:
+                out.write(frame)
+            else:
                 break
-            cv2.imwrite("/tmp/frames/frame%s.jpg" % str(count).zfill(5), frame)
-            count += 1
-        vidcap.release()
+
+        # 释放资源
+        out.release()
+    cap.release()
     cv2.destroyAllWindows()
-    return fps
+    # upload_folder(bucket_name, '/videos')
+
+
+def upload_blob(source_file_name, destination_blob_name):
+    '''upload file to bucket'''
+    storage_client = storage.Client(project='thinking-banner-421414')
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(destination_blob_name)
+    blob.upload_from_filename(source_file_name)
+    download_url = "https://storage.googleapis.com/" + bucket_name + "/" + destination_blob_name
+    return download_url
 
 
 def download_blob(url):
     '''save the file in url at /tmp/file and return filename'''
     filename = url.split('/')[-1]
     bucket_name = url.split('/')[-2]
-    storage_client = storage.Client()
+    storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
     destination_file_name = "/tmp/" + filename
@@ -114,16 +136,17 @@ def videoProcess():
     video_name = video.filename
     video_path = "/tmp/" + video_name
     image_path = "/tmp/" + image.filename
-    output_path = "/tmp/watermarked_" + video_name
 
     video.save(video_path)
     image.save(image_path)
 
-    create_table(video_name, video_path, image_path, output_path)
-    fps = decomposeFrame(video_path)
+    create_table()
+    video_url = upload_blob(video_path, video_name)
+    image_url = upload_blob(image_path, image.filename)
     message = {
         'task_id': task_id,
-        'fps': fps
+        'video_url': video_url,
+        'image_url': image_url
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     return jsonify({"message": "Task_id: " + task_id})
@@ -140,17 +163,12 @@ def urlProcess():
             all(substr in image_url for substr in required_string)):
         return jsonify({"message": "Wrong URL input. Please check your URL form."}), 500
 
-    video_name = download_blob(video_url)
-    image_name = download_blob(image_url)
-    video_path = "/tmp/" + video_name
-    image_path = "/tmp/" + image_name
-    output_path = "/tmp/watermarked_" + video_name
-
-    create_table(video_name, video_path, image_path, output_path)
-    fps = decomposeFrame(video_path)
+    create_table()
+    # fps = decomposeFrame(video_path)
     message = {
         'task_id': task_id,
-        'fps': fps
+        'video_url': video_url,
+        'image_url': image_url
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     return jsonify({"message": "task_id is " + task_id})
