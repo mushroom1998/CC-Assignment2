@@ -7,7 +7,6 @@ from google.cloud import datastore
 import time
 
 bucket_name = 'thinking-banner-421414_cloudbuild'
-os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
 
 project_id = "thinking-banner-421414"
 process_subscription_id = "process-video-sub"
@@ -19,11 +18,11 @@ process_topic_id = "process-video"
 process_topic_path = publisher.topic_path(project_id, process_topic_id)
 
 
-def getInformation(task_id):
-    client = datastore.Client()
-    key = client.key('Status', task_id)
-    task = client.get(key)
-    return task['video_name'], task['video_path'], task['image_path'], task['output_path']
+def checkSubPub():
+    try:
+        subscriber.get_subscription(subscription=process_subscription_path)
+    except:
+        subscriber.create_subscription(name=process_subscription_path, topic=process_topic_path)
 
 
 def update_table(progress, task_id):
@@ -96,6 +95,7 @@ def download_blob(url):
 
 
 if __name__ == "__main__":
+    checkSubPub()
     streaming_pull_future = subscriber.subscribe(process_subscription_path, callback=combineVideo)
     with subscriber:
         try:
