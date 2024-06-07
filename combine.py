@@ -6,7 +6,7 @@ from google.cloud import datastore
 import time
 
 bucket_name = 'thinking-banner-421414_cloudbuild'
-message_count = 0
+message_count = {}
 
 project_id = "thinking-banner-421414"
 process_subscription_id = "process-video-sub"
@@ -39,11 +39,12 @@ def combineVideo(message):
     '''combine all watermarked videos to a new video'''
     message.ack()
     global message_count
-    message_count += 1
-    if message_count == 4:
-        message_count = 0
-        data = json.loads(message.data)
-        task_id = data['task_id']
+    data = json.loads(message.data)
+    task_id = data['task_id']
+    if task_id not in message_count:
+        message_count[task_id] = 0
+    message_count[task_id] += 1
+    if message_count[task_id] == 4:
         download_blob("https://storage.googleapis.com/" + bucket_name + "/video0.mp4")
         download_blob("https://storage.googleapis.com/" + bucket_name + "/video1.mp4")
         download_blob("https://storage.googleapis.com/" + bucket_name + "/video2.mp4")
