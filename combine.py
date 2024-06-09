@@ -37,19 +37,19 @@ def update_table(progress, task_id):
 
 def combineVideo(message):
     '''combine all watermarked videos to a new video'''
-    message.ack()
     global message_count
     data = json.loads(message.data)
+    message.ack()
     task_id = data['task_id']
+    pod_num = data['pod_num']
     if task_id not in message_count:
         message_count[task_id] = 0
     message_count[task_id] += 1
-    if message_count[task_id] == 4:
-        download_blob("https://storage.googleapis.com/" + bucket_name + "/video0.mp4")
-        download_blob("https://storage.googleapis.com/" + bucket_name + "/video1.mp4")
-        download_blob("https://storage.googleapis.com/" + bucket_name + "/video2.mp4")
-        download_blob("https://storage.googleapis.com/" + bucket_name + "/video3.mp4")
-        video_files = ['video0.mp4', 'video1.mp4', 'video2.mp4', 'video3.mp4']
+    if message_count[task_id] == pod_num:
+        video_files = []
+        for i in range(pod_num):
+            download_blob("https://storage.googleapis.com/" + bucket_name + "/" + task_id + "_video" + str(i) + ".mp4")
+            video_files.append(task_id + '_video' + str(i) + '.mp4')
 
         cap = cv2.VideoCapture(video_files[0])
         fps = int(cap.get(cv2.CAP_PROP_FPS))
@@ -69,7 +69,7 @@ def combineVideo(message):
             cap.release()
         out.release()
 
-        download_url = upload_blob(task_id+".mp4", task_id)
+        download_url = upload_blob(task_id+".mp4", task_id+".mp4")
         status = "Task finish! Download URL: " + download_url + ('\n. You can download by running command: '
                                                                  'curl -X GET -H "Authorization: Bearer '
                                                                  '$(gcloud auth print-access-token)" -o '

@@ -3,9 +3,9 @@ from flask import Flask, request, jsonify, send_from_directory
 import os
 import uuid
 import json
-from google.cloud import storage
-from google.cloud import pubsub_v1, datastore
+from google.cloud import pubsub_v1, datastore, storage
 import time
+from kubernetes import client, config
 
 app = Flask(__name__)
 os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
@@ -14,29 +14,21 @@ task_id = str(uuid.uuid4())
 
 project_id = "thinking-banner-421414"
 decompose_topic_id = "decompose-video"
-decompose_subscription_id_0 = "decompose-video-sub-0"
-decompose_subscription_id_1 = "decompose-video-sub-1"
-decompose_subscription_id_2 = "decompose-video-sub-2"
-decompose_subscription_id_3 = "decompose-video-sub-3"
-process_topic_id = "process-video"
+decompose_subscription_paths = []
 process_subscription_id = "process-video-sub"
 
 publisher = pubsub_v1.PublisherClient()
 subscriber = pubsub_v1.SubscriberClient()
 decompose_topic_path = publisher.topic_path(project_id, decompose_topic_id)
-decompose_subscription_path_0 = subscriber.subscription_path(project_id, decompose_subscription_id_0)
-decompose_subscription_path_1 = subscriber.subscription_path(project_id, decompose_subscription_id_1)
-decompose_subscription_path_2 = subscriber.subscription_path(project_id, decompose_subscription_id_2)
-decompose_subscription_path_3 = subscriber.subscription_path(project_id, decompose_subscription_id_3)
-process_topic_path = publisher.topic_path(project_id, process_topic_id)
 process_subscription_path = subscriber.subscription_path(project_id, process_subscription_id)
 
 
-def clear_subscription(subscription_path):
-    def callback(message):
-        print(f"Dropping message: {message.data}")
-        message.ack()
+def callback(message):
+    print(f"Dropping message: {message.data}")
+    message.ack()
 
+
+def clear_subscription(subscription_path):
     future = subscriber.subscribe(subscription_path, callback)
     try:
         future.result(timeout=10)
@@ -53,13 +45,20 @@ def checkSubPub():
         publisher.create_topic(name=decompose_topic_path)
 
 
+def getPodCount():
+    config.load_kube_config()
+    v1 = client.CoreV1Api()
+    pods = v1.list_namespaced_pod(namespace='default')
+    return len(pods.items)
+
+
 def create_table():
     '''create NoSQL table to store task status'''
     client = datastore.Client(project='thinking-banner-421414')
     task_key = client.key("Status", task_id)
     task = datastore.Entity(key=task_key)
 
-    task["status"] = "Decomposing"
+    task["status"] = "Preprocessing"
     task["update_time"] = time.ctime()
 
     client.put(task)
@@ -105,7 +104,8 @@ def videoProcess():
     message = {
         'task_id': task_id,
         'video_url': video_url,
-        'image_url': image_url
+        'image_url': image_url,
+        'pod_num': pod_num
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
@@ -124,11 +124,11 @@ def urlProcess():
         return jsonify({"message": "Wrong URL input. Please check your URL form."}), 500
 
     create_table()
-    # fps = decomposeFrame(video_path)
     message = {
         'task_id': task_id,
         'video_url': video_url,
-        'image_url': image_url
+        'image_url': image_url,
+        'pod_num': pod_num
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
@@ -146,10 +146,10 @@ def tokenProcess():
 
 
 if __name__ == "__main__":
-    clear_subscription(decompose_subscription_path_0)
-    clear_subscription(decompose_subscription_path_1)
-    clear_subscription(decompose_subscription_path_2)
-    clear_subscription(decompose_subscription_path_3)
+    pod_num = getPodCount()
+    for i in range(pod_num):
+        decompose_subscription_path = subscriber.subscription_path(project_id, "decompose-video-sub-" + str(i))
+        clear_subscription(decompose_subscription_path)
     clear_subscription(process_subscription_path)
     checkSubPub()
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))

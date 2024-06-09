@@ -34,20 +34,13 @@ def checkSubPub():
         subscriber.create_subscription(name=decompose_subscription_path, topic=decompose_topic_path)
 
 
-def getProgress(task_id):
-    client = datastore.Client(project='thinking-banner-421414')
-    key = client.key('Status', task_id)
-    task = client.get(key)
-    return 0 if task['status'] == 'Decomposing' else int(task['status'][:-1])
-
-
-def update_table(task_id):
+def update_table(task_id, pod_num):
     client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
     if task:
-        progress = 0 if task['status'] == 'Decomposing' else int(task['status'][:-1])
-        task['status'] = "{:.0f}%".format(progress + 25)
+        progress = 0 if task['status'] == 'Preprocessing' else int(task['status'][:-1])
+        task['status'] = "{:.0f}%".format(progress + 100 / pod_num)
         task['update_time'] = time.ctime()
     client.put(task)
 
@@ -55,26 +48,27 @@ def update_table(task_id):
 def addWatermark(message):
     '''add watermark to videos'''
     data = json.loads(message.data)
+    message.ack()
     task_id = data['task_id']
     print(job_id, task_id)
     video_url = data['video_url']
     image_url = data['image_url']
+    pod_num = data['pod_num']
     video_name = download_blob(video_url)
     image_name = download_blob(image_url)
-    output_name = "video"+job_id+".mp4"
+    output_name = task_id + "_video" + job_id + ".mp4"
 
     cap = cv2.VideoCapture(video_name)
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    segment_frames = total_frames // 4
+    segment_frames = total_frames // pod_num
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_name, fourcc, fps, (width, height))
 
     logo = cv2.imread(image_name, cv2.IMREAD_UNCHANGED)
     logo_height, logo_width = logo.shape[:2]
-
 
     start_frame = int(job_id) * segment_frames
     end_frame = start_frame + segment_frames
@@ -108,14 +102,18 @@ def addWatermark(message):
     cap.release()
     out.release()
     cv2.destroyAllWindows()
+    print('add finish')
 
-    update_table(task_id)
+    update_table(task_id, pod_num)
+    print('update table')
     upload_blob(output_name, output_name)
+    print('upload')
     process_message = {
-        'task_id': task_id
+        'task_id': task_id,
+        'pod_num': pod_num
     }
     publisher.publish(process_topic_path, json.dumps(process_message).encode('utf-8'))
-    message.ack()
+    print('publish')
 
 
 def upload_blob(source_file_name, destination_blob_name):
