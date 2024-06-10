@@ -51,9 +51,11 @@ def addWatermark(message):
     message.ack()
     task_id = data['task_id']
     print(job_id, task_id)
-    video_url = data['video_url']
-    image_url = data['image_url']
+    video_name = data['video_name']
+    image_name = data['image_name']
     pod_num = data['pod_num']
+    video_url = "https://storage.googleapis.com/" + bucket_name + "/" + video_name.split('.')[0] + job_id + ".mp4"
+    image_url = "https://storage.googleapis.com/" + bucket_name + "/" + image_name
     video_name = download_blob(video_url)
     image_name = download_blob(image_url)
     output_name = task_id + "_video" + job_id + ".mp4"
@@ -62,18 +64,13 @@ def addWatermark(message):
     fps = cap.get(cv2.CAP_PROP_FPS)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-    segment_frames = total_frames // pod_num
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_name, fourcc, fps, (width, height))
 
     logo = cv2.imread(image_name, cv2.IMREAD_UNCHANGED)
     logo_height, logo_width = logo.shape[:2]
 
-    start_frame = int(job_id) * segment_frames
-    end_frame = start_frame + segment_frames
-    cap.set(cv2.CAP_PROP_POS_FRAMES, start_frame)
-    while cap.isOpened() and cap.get(cv2.CAP_PROP_POS_FRAMES) < end_frame:
+    while cap.isOpened():
         ret, frame = cap.read()
         if not ret:
             break

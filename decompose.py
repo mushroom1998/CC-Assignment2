@@ -1,11 +1,14 @@
 import logging
 from flask import Flask, request, jsonify, send_from_directory
+import cv2
 import os
 import uuid
+import math
 import json
 from google.cloud import pubsub_v1, datastore, storage
 import time
 from kubernetes import client, config
+import re
 
 app = Flask(__name__)
 os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
@@ -52,12 +55,39 @@ def getPodCount():
     return len(pods.items)
 
 
-def create_table():
+def split_video(input_file, pod_num):
+    cap = cv2.VideoCapture(input_file)
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    frames_per_split = math.ceil(total_frames / pod_num)
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+
+    for i in range(pod_num):
+        # 创建视频写入器
+        output_file = input_file.split('.')[0] + str(i) + '.mp4'
+        out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
+        for j in range(frames_per_split):
+            ret, frame = cap.read()
+            if not ret:
+                break
+            out.write(frame)
+        out.release()
+
+        if not ret:
+            break
+    cap.release()
+
+
+def create_table(video_path, image_path):
     '''create NoSQL table to store task status'''
     client = datastore.Client(project='thinking-banner-421414')
     task_key = client.key("Status", task_id)
     task = datastore.Entity(key=task_key)
 
+    task['image_path'] = image_path
+    task['video_path'] = video_path
     task["status"] = "Preprocessing"
     task["update_time"] = time.ctime()
 
@@ -81,6 +111,18 @@ def upload_blob(source_file_name, destination_blob_name):
     return download_url
 
 
+def download_blob(url):
+    '''save the file in url at /tmp/file and return filename'''
+    filename = url.split('/')[-1]
+    bucket_name = url.split('/')[-2]
+    storage_client = storage.Client(project='thinking-banner-421414')
+    bucket = storage_client.bucket(bucket_name)
+    blob = bucket.blob(filename)
+    destination_file_name = filename
+    blob.download_to_filename(destination_file_name)
+    return filename
+
+
 @app.route('/')
 def index():
     return send_from_directory('static', 'web.html')
@@ -91,20 +133,21 @@ def videoProcess():
     video = request.files['videoFile']
     image = request.files['watermarkFile']
 
-    video_name = video.filename
-    video_path = "/tmp/" + video_name
-    image_path = "/tmp/" + image.filename
+    video_path = video.filename
+    image_path = image.filename
 
     video.save(video_path)
     image.save(image_path)
+    split_video(video_path, pod_num)
 
-    create_table()
-    video_url = upload_blob(video_path, video_name)
-    image_url = upload_blob(image_path, image.filename)
+    create_table(video_path, image_path)
+    upload_blob(image_path, image_path)
+    for i in range(pod_num):
+        upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
     message = {
         'task_id': task_id,
-        'video_url': video_url,
-        'image_url': image_url,
+        'video_name': video_path,
+        'image_name': image_path,
         'pod_num': pod_num
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
@@ -117,17 +160,24 @@ def urlProcess():
     video_url = request.form['videoURL']
     image_url = request.form['watermarkURL']
 
-    required_string = ['cloud', 'storage', 'google', '.com', 'https://']
-
-    if not (all(substr in video_url for substr in required_string) and
-            all(substr in image_url for substr in required_string)):
+    pattern = r'^https://storage\.googleapis\.com/([^/]+)/([^/]+)\.([^/]+)$'
+    video_match = re.match(pattern, video_url)
+    image_match = re.match(pattern, image_url)
+    if video_match is None or image_match is None:
         return jsonify({"message": "Wrong URL input. Please check your URL form."}), 500
 
-    create_table()
+    video_path = download_blob(video_url)
+    image_path = download_blob(image_url)
+    split_video(video_path, pod_num)
+
+    create_table(video_path, image_path)
+    upload_blob(image_path, image_path)
+    for i in range(pod_num):
+        upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
     message = {
         'task_id': task_id,
-        'video_url': video_url,
-        'image_url': image_url,
+        'video_name': video_path,
+        'image_name': image_path,
         'pod_num': pod_num
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
