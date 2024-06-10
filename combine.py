@@ -1,3 +1,4 @@
+import os
 from google.cloud import pubsub_v1
 import json
 import cv2
@@ -19,6 +20,7 @@ process_topic_path = publisher.topic_path(project_id, process_topic_id)
 
 
 def checkSubPub():
+    '''create the Pub/Sub if not exist'''
     try:
         subscriber.get_subscription(subscription=process_subscription_path)
     except:
@@ -26,6 +28,7 @@ def checkSubPub():
 
 
 def update_table(progress, task_id):
+    '''update the progress of task'''
     client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
@@ -36,21 +39,25 @@ def update_table(progress, task_id):
 
 
 def combineVideo(message):
-    '''combine all watermarked videos to a new video'''
+    '''combine all watermarked video clips to a new video'''
     global message_count
     data = json.loads(message.data)
     message.ack()
     task_id = data['task_id']
     pod_num = data['pod_num']
+
     if task_id not in message_count:
         message_count[task_id] = 0
     message_count[task_id] += 1
-    if message_count[task_id] == pod_num:
+    print(message_count[task_id], task_id)
+
+    if message_count[task_id] == pod_num:  # perform combine operations when all workers finish
         video_files = []
         for i in range(pod_num):
             download_blob("https://storage.googleapis.com/" + bucket_name + "/" + task_id + "_video" + str(i) + ".mp4")
             video_files.append(task_id + '_video' + str(i) + '.mp4')
 
+        print("start combining")
         cap = cv2.VideoCapture(video_files[0])
         fps = int(cap.get(cv2.CAP_PROP_FPS))
         width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
@@ -62,19 +69,23 @@ def combineVideo(message):
         for video_file in video_files:
             cap = cv2.VideoCapture(video_file)
             while True:
-                ret, frame = cap.read()
-                if not ret:
+                success, frame = cap.read()
+                if not success:
                     break
                 out.write(frame)
             cap.release()
+            os.remove(video_file)
         out.release()
 
+        print("uploading...")
         download_url = upload_blob(task_id+".mp4", task_id+".mp4")
         status = "Task finish! Download URL: " + download_url + ('\n. You can download by running command: '
                                                                  'curl -X GET -H "Authorization: Bearer '
                                                                  '$(gcloud auth print-access-token)" -o '
                                                                  '"LOCAL_FILENAME" "DOWNLOAD_URL"')
+        print("finish time: " + time.ctime())
         update_table(status, task_id)
+        os.remove(task_id+".mp4")
 
 
 def upload_blob(source_file_name, destination_blob_name):
@@ -90,12 +101,10 @@ def upload_blob(source_file_name, destination_blob_name):
 def download_blob(url):
     '''save the file in url at /tmp/file and return filename'''
     filename = url.split('/')[-1]
-    bucket_name = url.split('/')[-2]
     storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
-    destination_file_name = filename
-    blob.download_to_filename(destination_file_name)
+    blob.download_to_filename(filename)
     return filename
 
 

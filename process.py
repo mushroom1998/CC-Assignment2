@@ -35,6 +35,7 @@ def checkSubPub():
 
 
 def update_table(task_id, pod_num):
+    '''update the progress of task'''
     client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
@@ -46,7 +47,7 @@ def update_table(task_id, pod_num):
 
 
 def addWatermark(message):
-    '''add watermark to videos'''
+    '''add watermark to video clips'''
     data = json.loads(message.data)
     message.ack()
     task_id = data['task_id']
@@ -67,33 +68,33 @@ def addWatermark(message):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
     out = cv2.VideoWriter(output_name, fourcc, fps, (width, height))
 
-    logo = cv2.imread(image_name, cv2.IMREAD_UNCHANGED)
-    logo_height, logo_width = logo.shape[:2]
+    image = cv2.imread(image_name, cv2.IMREAD_UNCHANGED)
+    image_height, image_width = image.shape[:2]
 
     while cap.isOpened():
-        ret, frame = cap.read()
-        if not ret:
+        success, frame = cap.read()
+        if not success:
             break
         frame_height, frame_width = frame.shape[:2]
-        scale = min(frame_width / logo_width, frame_height / logo_height)
-        logo_resized = cv2.resize(logo, (int(logo_width * scale), int(logo_height * scale)))
-        logo_height, logo_width = logo_resized.shape[:2]
+        scale = min(frame_width / image_width, frame_height / image_height)
+        image_resized = cv2.resize(image, (int(image_width * scale), int(image_height * scale)))
+        image_height, image_width = image_resized.shape[:2]
 
-        if logo_resized.shape[2] == 4:
-            logo_rgb = cv2.cvtColor(logo_resized, cv2.COLOR_BGRA2BGR)
-            logo_alpha = logo_resized[:, :, 3] / 255.0
+        # transform to BGR if watermark file is BGRA
+        if image_resized.shape[2] == 4:
+            image_rgb = cv2.cvtColor(image_resized, cv2.COLOR_BGRA2BGR)
+            image_alpha = image_resized[:, :, 3] / 255.0
         else:
-            logo_rgb = logo_resized
-            logo_alpha = np.ones((logo_height, logo_width))
+            image_rgb = image_resized
+            image_alpha = np.ones((image_height, image_width))
 
-        x_offset = frame_width - logo_width
-        y_offset = frame_height - logo_height
-        roi = frame[y_offset: y_offset + logo_height, x_offset: x_offset + logo_width]
+        x_loc = frame_width - image_width
+        y_loc = frame_height - image_height
+        watermark_loc = frame[y_loc: y_loc + image_height, x_loc: x_loc + image_width]
 
         for c in range(3):
-            roi[:, :, c] = roi[:, :, c] * (1 - logo_alpha) + logo_rgb[:, :, c] * logo_alpha
-
-        frame[y_offset: y_offset + logo_height, x_offset: x_offset + logo_width] = roi
+            watermark_loc[:, :, c] = watermark_loc[:, :, c] * (1 - image_alpha) + image_rgb[:, :, c] * image_alpha
+        frame[y_loc: y_loc + image_height, x_loc: x_loc + image_width] = watermark_loc
 
         out.write(frame)
     cap.release()
@@ -110,6 +111,9 @@ def addWatermark(message):
         'pod_num': pod_num
     }
     publisher.publish(process_topic_path, json.dumps(process_message).encode('utf-8'))
+    os.remove(video_name)
+    os.remove(image_name)
+    os.remove(output_name)
     print('publish')
 
 
@@ -126,12 +130,10 @@ def upload_blob(source_file_name, destination_blob_name):
 def download_blob(url):
     '''save the file in url at /tmp/file and return filename'''
     filename = url.split('/')[-1]
-    bucket_name = url.split('/')[-2]
     storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
-    destination_file_name = filename
-    blob.download_to_filename(destination_file_name)
+    blob.download_to_filename(filename)
     return filename
 
 

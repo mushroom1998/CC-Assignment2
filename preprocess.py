@@ -13,7 +13,6 @@ import re
 app = Flask(__name__)
 os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
 bucket_name = 'thinking-banner-421414_cloudbuild'
-task_id = str(uuid.uuid4())
 
 project_id = "thinking-banner-421414"
 decompose_topic_id = "decompose-video"
@@ -26,20 +25,6 @@ decompose_topic_path = publisher.topic_path(project_id, decompose_topic_id)
 process_subscription_path = subscriber.subscription_path(project_id, process_subscription_id)
 
 
-def callback(message):
-    print(f"Dropping message: {message.data}")
-    message.ack()
-
-
-def clear_subscription(subscription_path):
-    future = subscriber.subscribe(subscription_path, callback)
-    try:
-        future.result(timeout=10)
-    except Exception as e:
-        future.cancel()
-        print(f"Subscription cleared: {subscription_path}")
-
-
 def checkSubPub():
     '''create the Pub/Sub if not exist'''
     try:
@@ -49,6 +34,7 @@ def checkSubPub():
 
 
 def getPodCount():
+    '''Get the total number of pods in GKE'''
     config.load_kube_config()
     v1 = client.CoreV1Api()
     pods = v1.list_namespaced_pod(namespace='default')
@@ -56,6 +42,7 @@ def getPodCount():
 
 
 def split_video(input_file, pod_num):
+    '''split the original video to pod_num clips'''
     cap = cv2.VideoCapture(input_file)
     fps = cap.get(cv2.CAP_PROP_FPS)
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
@@ -65,22 +52,22 @@ def split_video(input_file, pod_num):
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
     for i in range(pod_num):
-        # 创建视频写入器
         output_file = input_file.split('.')[0] + str(i) + '.mp4'
         out = cv2.VideoWriter(output_file, fourcc, fps, (width, height))
         for j in range(frames_per_split):
-            ret, frame = cap.read()
-            if not ret:
+            success, frame = cap.read()
+            if not success:
                 break
             out.write(frame)
         out.release()
 
-        if not ret:
+        if not success:
             break
+        logging.warning("video" + str(i) + " split.")
     cap.release()
 
 
-def create_table(video_path, image_path):
+def create_table(video_path, image_path, task_id):
     '''create NoSQL table to store task status'''
     client = datastore.Client(project='thinking-banner-421414')
     task_key = client.key("Status", task_id)
@@ -95,6 +82,7 @@ def create_table(video_path, image_path):
 
 
 def getProgress(task_id):
+    '''get the status of task by task_id'''
     client = datastore.Client(project='thinking-banner-421414')
     key = client.key('Status', task_id)
     task = client.get(key)
@@ -112,14 +100,12 @@ def upload_blob(source_file_name, destination_blob_name):
 
 
 def download_blob(url):
-    '''save the file in url at /tmp/file and return filename'''
+    '''save the file in url at local directory and return filename'''
     filename = url.split('/')[-1]
-    bucket_name = url.split('/')[-2]
     storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
-    destination_file_name = filename
-    blob.download_to_filename(destination_file_name)
+    blob.download_to_filename(filename)
     return filename
 
 
@@ -130,20 +116,31 @@ def index():
 
 @app.route('/upload1', methods=['POST'])
 def videoProcess():
+    '''deal with file input'''
+    logging.warning("start time: " + time.ctime())
+    task_id = str(uuid.uuid4())
+
     video = request.files['videoFile']
     image = request.files['watermarkFile']
-
     video_path = video.filename
     image_path = image.filename
+
+    # format checking
+    if image_path.split('.')[-1].lower() not in ['png', 'jpg', 'jpeg']:
+        return jsonify({"message": "Not an image file. Please check your URL form."}), 500
+    if video_path.split('.')[-1].lower() not in ['mov', 'mp4', 'wmv', 'avi']:
+        return jsonify({"message": "Not a video file. Please check your URL form."}), 500
 
     video.save(video_path)
     image.save(image_path)
     split_video(video_path, pod_num)
 
-    create_table(video_path, image_path)
+    create_table(video_path, image_path, task_id)
+    # upload video clips and watermark to GCS
     upload_blob(image_path, image_path)
     for i in range(pod_num):
         upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
+
     message = {
         'task_id': task_id,
         'video_name': video_path,
@@ -152,25 +149,36 @@ def videoProcess():
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
+    os.remove(video_path)
+    os.remove(image_path)
     return jsonify({"message": "Task_id: " + task_id})
 
 
 @app.route('/upload2', methods=['POST'])
 def urlProcess():
+    '''deal with URL input'''
+    logging.warning("start time: " + time.ctime())
+    task_id = str(uuid.uuid4())
+
     video_url = request.form['videoURL']
     image_url = request.form['watermarkURL']
 
+    # format check
     pattern = r'^https://storage\.googleapis\.com/([^/]+)/([^/]+)\.([^/]+)$'
     video_match = re.match(pattern, video_url)
     image_match = re.match(pattern, image_url)
     if video_match is None or image_match is None:
         return jsonify({"message": "Wrong URL input. Please check your URL form."}), 500
+    if image_url.split('.')[-1].lower() not in ['png', 'jpg', 'jpeg']:
+        return jsonify({"message": "Not an image file. Please check your URL form."}), 500
+    if video_url.split('.')[-1].lower() not in ['mov', 'mp4', 'wmv', 'avi']:
+        return jsonify({"message": "Not a video file. Please check your URL form."}), 500
 
     video_path = download_blob(video_url)
     image_path = download_blob(image_url)
     split_video(video_path, pod_num)
 
-    create_table(video_path, image_path)
+    create_table(video_path, image_path, task_id)
     upload_blob(image_path, image_path)
     for i in range(pod_num):
         upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
@@ -182,11 +190,14 @@ def urlProcess():
     }
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
+    os.remove(video_path)
+    os.remove(image_path)
     return jsonify({"message": "task_id is " + task_id})
 
 
 @app.route('/tokenProcess', methods=['GET'])
 def tokenProcess():
+    '''get the status of task using id'''
     try:
         input_task_id = request.args.get('taskID')
         progress = getProgress(input_task_id)
@@ -197,9 +208,5 @@ def tokenProcess():
 
 if __name__ == "__main__":
     pod_num = getPodCount()
-    for i in range(pod_num):
-        decompose_subscription_path = subscriber.subscription_path(project_id, "decompose-video-sub-" + str(i))
-        clear_subscription(decompose_subscription_path)
-    clear_subscription(process_subscription_path)
     checkSubPub()
     app.run(debug=True, host='0.0.0.0', port=int(os.environ.get('PORT', 8080)))
