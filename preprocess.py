@@ -48,7 +48,7 @@ def split_video(input_file, pod_num):
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-    frames_per_split = math.ceil(total_frames / pod_num)
+    frames_per_split = math.floor(total_frames / pod_num)
     fourcc = cv2.VideoWriter_fourcc(*'mp4v')
 
     for i in range(pod_num):
@@ -117,7 +117,6 @@ def index():
 @app.route('/upload1', methods=['POST'])
 def videoProcess():
     '''deal with file input'''
-    logging.warning("start time: " + time.ctime())
     task_id = str(uuid.uuid4())
 
     video = request.files['videoFile']
@@ -140,6 +139,7 @@ def videoProcess():
     upload_blob(image_path, image_path)
     for i in range(pod_num):
         upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
+        os.remove(video_path.split('.')[0] + str(i) + '.mp4')
 
     message = {
         'task_id': task_id,
@@ -157,7 +157,6 @@ def videoProcess():
 @app.route('/upload2', methods=['POST'])
 def urlProcess():
     '''deal with URL input'''
-    logging.warning("start time: " + time.ctime())
     task_id = str(uuid.uuid4())
 
     video_url = request.form['videoURL']
@@ -175,13 +174,13 @@ def urlProcess():
         return jsonify({"message": "Not a video file. Please check your URL form."}), 500
 
     video_path = download_blob(video_url)
-    image_path = download_blob(image_url)
+    image_path = image_url.split('/')[-1]
     split_video(video_path, pod_num)
 
     create_table(video_path, image_path, task_id)
-    upload_blob(image_path, image_path)
     for i in range(pod_num):
         upload_blob(video_path.split('.')[0] + str(i) + '.mp4', video_path.split('.')[0] + str(i) + '.mp4')
+        os.remove(video_path.split('.')[0] + str(i) + '.mp4')
     message = {
         'task_id': task_id,
         'video_name': video_path,
@@ -191,7 +190,6 @@ def urlProcess():
     publisher.publish(decompose_topic_path, json.dumps(message).encode('utf-8'))
     logging.warning(message)
     os.remove(video_path)
-    os.remove(image_path)
     return jsonify({"message": "task_id is " + task_id})
 
 

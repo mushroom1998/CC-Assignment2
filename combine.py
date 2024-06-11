@@ -83,7 +83,7 @@ def combineVideo(message):
                                                                  'curl -X GET -H "Authorization: Bearer '
                                                                  '$(gcloud auth print-access-token)" -o '
                                                                  '"LOCAL_FILENAME" "DOWNLOAD_URL"')
-        print("finish time: " + time.ctime())
+        print(task_id + " finish time: " + time.ctime())
         update_table(status, task_id)
         os.remove(task_id+".mp4")
 
