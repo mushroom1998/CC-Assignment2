@@ -50,6 +50,7 @@ def combineVideo(message):
         message_count[task_id] = 0
     message_count[task_id] += 1
     print(message_count[task_id], task_id)
+    update_table("{:.2f}%".format(message_count[task_id] * 100 / pod_num), task_id)
 
     if message_count[task_id] == pod_num:  # perform combine operations when all workers finish
         video_files = []

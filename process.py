@@ -34,18 +34,6 @@ def checkSubPub():
         subscriber.create_subscription(name=decompose_subscription_path, topic=decompose_topic_path)
 
 
-def update_table(task_id, pod_num):
-    '''update the progress of task'''
-    client = datastore.Client(project='thinking-banner-421414')
-    key = client.key('Status', task_id)
-    task = client.get(key)
-    if task:
-        progress = 0 if task['status'] == 'Preprocessing' else int(task['status'][:-1])
-        task['status'] = "{:.0f}%".format(progress + 100 / pod_num)
-        task['update_time'] = time.ctime()
-    client.put(task)
-
-
 def addWatermark(message):
     '''add watermark to video clips'''
     data = json.loads(message.data)
@@ -59,6 +47,8 @@ def addWatermark(message):
     image_url = "https://storage.googleapis.com/" + bucket_name + "/" + image_name
     video_name = download_blob(video_url)
     image_name = download_blob(image_url)
+    if video_name == None or image_name == None:
+        return
     output_name = task_id + "_video" + job_id + ".mp4"
 
     cap = cv2.VideoCapture(video_name)
@@ -102,19 +92,17 @@ def addWatermark(message):
     cv2.destroyAllWindows()
     print('add finish')
 
-    update_table(task_id, pod_num)
-    print('update table')
     upload_blob(output_name, output_name)
     print('upload')
     process_message = {
         'task_id': task_id,
         'pod_num': pod_num
     }
-    publisher.publish(process_topic_path, json.dumps(process_message).encode('utf-8'))
+    future = publisher.publish(process_topic_path, json.dumps(process_message).encode('utf-8'))
     os.remove(video_name)
     os.remove(image_name)
     os.remove(output_name)
-    print('publish')
+    print(task_id, future.result())
 
 
 def upload_blob(source_file_name, destination_blob_name):
@@ -133,6 +121,10 @@ def download_blob(url):
     storage_client = storage.Client(project='thinking-banner-421414')
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
+    try:
+        blob.exists()
+    except:
+        return None
     blob.download_to_filename(filename)
     return filename
 

@@ -11,9 +11,7 @@ from kubernetes import client, config
 import re
 
 app = Flask(__name__)
-os.environ["GCLOUD_PROJECT"] = "thinking-banner-421414"
 bucket_name = 'thinking-banner-421414_cloudbuild'
-
 project_id = "thinking-banner-421414"
 decompose_topic_id = "decompose-video"
 decompose_subscription_paths = []
@@ -35,7 +33,10 @@ def checkSubPub():
 
 def getPodCount():
     '''Get the total number of pods in GKE'''
-    config.load_kube_config()
+    try:
+        config.load_kube_config()
+    except:
+        return 1
     v1 = client.CoreV1Api()
     pods = v1.list_namespaced_pod(namespace='default')
     return len(pods.items)
