@@ -42,7 +42,7 @@ def getPodCount():
     return len(pods.items)
 
 
-def split_video(input_file, pod_num):
+def splitVideo(input_file, pod_num):
     '''split the original video to pod_num clips'''
     cap = cv2.VideoCapture(input_file)
     fps = cap.get(cv2.CAP_PROP_FPS)
@@ -133,7 +133,7 @@ def videoProcess():
 
     video.save(video_path)
     image.save(image_path)
-    split_video(video_path, pod_num)
+    splitVideo(video_path, pod_num)
 
     create_table(video_path, image_path, task_id)
     # upload video clips and watermark to GCS
@@ -176,7 +176,7 @@ def urlProcess():
 
     video_path = download_blob(video_url)
     image_path = image_url.split('/')[-1]
-    split_video(video_path, pod_num)
+    splitVideo(video_path, pod_num)
 
     create_table(video_path, image_path, task_id)
     for i in range(pod_num):

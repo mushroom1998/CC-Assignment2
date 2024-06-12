@@ -60,28 +60,29 @@ def addWatermark(message):
 
     image = cv2.imread(image_name, cv2.IMREAD_UNCHANGED)
     image_height, image_width = image.shape[:2]
+    success, frame = cap.read()
+    frame_height, frame_width = frame.shape[:2]
+    scale = min(frame_width / image_width, frame_height / image_height)
+    image_resized = cv2.resize(image, (int(image_width * scale), int(image_height * scale)))
+    image_height, image_width = image_resized.shape[:2]
+
+    # transform to BGR if watermark file is BGRA
+    if image_resized.shape[2] == 4:
+        image_rgb = cv2.cvtColor(image_resized, cv2.COLOR_BGRA2BGR)
+        image_alpha = image_resized[:, :, 3] / 255.0
+    else:
+        image_rgb = image_resized
+        image_alpha = np.ones((image_height, image_width))
+
+    x_loc = frame_width - image_width
+    y_loc = frame_height - image_height
 
     while cap.isOpened():
         success, frame = cap.read()
         if not success:
             break
-        frame_height, frame_width = frame.shape[:2]
-        scale = min(frame_width / image_width, frame_height / image_height)
-        image_resized = cv2.resize(image, (int(image_width * scale), int(image_height * scale)))
-        image_height, image_width = image_resized.shape[:2]
 
-        # transform to BGR if watermark file is BGRA
-        if image_resized.shape[2] == 4:
-            image_rgb = cv2.cvtColor(image_resized, cv2.COLOR_BGRA2BGR)
-            image_alpha = image_resized[:, :, 3] / 255.0
-        else:
-            image_rgb = image_resized
-            image_alpha = np.ones((image_height, image_width))
-
-        x_loc = frame_width - image_width
-        y_loc = frame_height - image_height
         watermark_loc = frame[y_loc: y_loc + image_height, x_loc: x_loc + image_width]
-
         for c in range(3):
             watermark_loc[:, :, c] = watermark_loc[:, :, c] * (1 - image_alpha) + image_rgb[:, :, c] * image_alpha
         frame[y_loc: y_loc + image_height, x_loc: x_loc + image_width] = watermark_loc
@@ -122,11 +123,10 @@ def download_blob(url):
     bucket = storage_client.bucket(bucket_name)
     blob = bucket.blob(filename)
     try:
-        blob.exists()
+        blob.download_to_filename(filename)
+        return filename
     except:
         return None
-    blob.download_to_filename(filename)
-    return filename
 
 
 if __name__ == "__main__":
