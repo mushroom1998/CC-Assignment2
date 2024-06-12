@@ -1,6 +1,7 @@
 import os
 from google.cloud import pubsub_v1
 import json
+import threading
 import cv2
 from google.cloud import storage
 from google.cloud import datastore
@@ -8,6 +9,7 @@ import time
 
 bucket_name = 'thinking-banner-421414_cloudbuild'
 message_count = {}
+lock = threading.Lock()
 
 project_id = "thinking-banner-421414"
 process_subscription_id = "process-video-sub"
@@ -46,11 +48,13 @@ def combineVideo(message):
     task_id = data['task_id']
     pod_num = data['pod_num']
 
-    if task_id not in message_count:
-        message_count[task_id] = 0
-    message_count[task_id] += 1
-    print(message_count[task_id], task_id)
-    update_table("{:.2f}%".format(message_count[task_id] * 100 / pod_num), task_id)
+    with lock:
+        print(message_count)
+        if task_id not in message_count:
+            message_count[task_id] = 0
+        message_count[task_id] += 1
+        print(message_count[task_id], task_id)
+        update_table("{:.2f}%".format(message_count[task_id] * 100 / pod_num), task_id)
 
     if message_count[task_id] == pod_num:  # perform combine operations when all workers finish
         video_files = []
